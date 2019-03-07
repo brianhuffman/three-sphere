@@ -3,6 +3,9 @@ module Main where
 import Graphics.Gloss
 import Graphics.Gloss.Interface.Pure.Game
 
+import Quaternion
+import Polytopes
+
 {-
 ------------------------------------------------------------
 Notes on the geometry of a 3-sphere.
@@ -108,44 +111,6 @@ obtained by taking even permutations of ½(±φ,±1,±1/φ,0).
 
 import Data.List ((\\), sortBy)
 
-data Quat a = Q a a a a
-  deriving (Eq, Ord, Show)
-
-wQ, xQ, yQ, zQ :: Quat a -> a
-wQ (Q w _ _ _) = w
-xQ (Q _ x _ _) = x
-yQ (Q _ _ y _) = y
-zQ (Q _ _ _ z) = z
-
-instance Num a => Num (Quat a) where
-  Q a b c d + Q w x y z = Q (a+w) (b+x) (c+y) (d+z)
-  Q a b c d - Q w x y z = Q (a-w) (b-x) (c-y) (d-z)
-  Q a b c d * Q w x y z = Q (a*w - b*x - c*y - d*z)
-                            (b*w + a*x - d*y + c*z)
-                            (c*w + d*x + a*y - b*z)
-                            (d*w - c*x + b*y + a*z)
-  negate (Q a b c d) = Q (negate a) (negate b) (negate c) (negate d)
-  fromInteger n = Q (fromInteger n) 0 0 0
-  abs _ = error "abs Quat"
-  signum _ = error "signum Quat"
-
-conjQ :: Num a => Quat a -> Quat a
-conjQ (Q a b c d) = Q a (-b) (-c) (-d)
-
-instance Fractional a => Fractional (Quat a) where
-  recip (Q a b c d) = let s = a*a + b*b + c*c + d*d
-                      in Q (a/s) (-b/s) (-c/s) (-d/s)
-  fromRational r = Q (fromRational r) 0 0 0
-
-class Phi a where
-  phi :: a
-
-instance Phi Float where
-  phi = (sqrt 5 + 1) / 2
-
-instance Phi Double where
-  phi = (sqrt 5 + 1) / 2
-
 -- | The idea is that turn(a,b,c,d) should rotate (1,0,0,0) onto
 -- (a,b,c,d), while preserving directions for all other points. It
 -- turns out that this is precisely quaternion multiplication, where
@@ -196,65 +161,6 @@ instance Phi P where
 
 unP (P a b) = fromRational a * phi + fromRational b
 
-{-
-16 vertices of the form (±½,±½,±½,±½), and 8 vertices obtained from
-(0,0,0,±1) by permuting coordinates. The remaining 96 vertices are
-obtained by taking even permutations of ½(±φ,±1,±1/φ,0).
--}
-
-type R = Float
-
-vs8 :: [Quat R]
-vs8 = do
-  a <- [1, -1]
-  [Q a 0 0 0, Q 0 a 0 0, Q 0 0 a 0, Q 0 0 0 a]
-
-vs24 :: [Quat R]
-vs24 = vs8 ++ vs16
-  where
-    vs16 = do
-      w <- [1/2, -1/2]
-      x <- [1/2, -1/2]
-      y <- [1/2, -1/2]
-      z <- [1/2, -1/2]
-      return (Q w x y z)
-
-vs120 :: [Quat R]
-vs120 = vs24 ++ vs96
-  where
-    vs96 = do
-      a <- [phi/2, -phi/2]
-      b <- [1/2, -1/2]
-      c <- [1/phi/2, -1/phi/2]
-      x <- [ Q a b c 0
-           , Q a c 0 b
-           , Q a 0 b c
-           , Q b a 0 c --
-           , Q b c a 0
-           , Q b 0 c a
-           , Q c a b 0
-           , Q c b 0 a
-           , Q c 0 a b --
-           , Q 0 a c b
-           , Q 0 b a c
-           , Q 0 c b a --
-           ]
-      return x
-
-sizeQ (Q w x y z) = w*w + x*x + y*y + z*z
-
-normalizeQ (Q w x y z) = Q (w/s) (x/s) (y/s) (z/s)
-  where s = sqrt (w*w + x*x + y*y + z*z)
-
-edges720 :: [(Quat R, Quat R)]
-edges720 = go vs120
-  where go [] = []
-        go (u : vs) = [ (u, v) | v <- vs, sizeQ (u - v) < 0.5 ] ++ go vs
-
-edges96 :: [(Quat R, Quat R)]
-edges96 = go vs24
-  where go [] = []
-        go (u : vs) = [ (u, v) | v <- vs, sizeQ (u - v) < 1.25 ] ++ go vs
 
 edgeNodes :: Int -> (Quat R, Quat R) -> [Quat R]
 edgeNodes n (u, v) = map normalizeQ [ u * d + v * (1 - d) | d <- ds ]
